@@ -10,35 +10,53 @@ NAZARIO_FILE = "dataset/raw/nazario.csv"
 ENRON_FILE = "dataset/raw/enron_spam_data.csv"
 
 OUTPUT_DIR = "dataset/processed"
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "email_dataset.csv")
+OUTPUT_FILE = os.path.join(
+    OUTPUT_DIR,
+    "email_dataset.csv"
+)
 
 
 # ============================================================
 # CREATE OUTPUT DIRECTORY
 # ============================================================
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(
+    OUTPUT_DIR,
+    exist_ok=True
+)
 
 
 # ============================================================
-# 1. LOAD ENRON DATASET
+# LOAD ENRON
 # ============================================================
 
 print("\nLoading Enron dataset...")
 
-enron = pd.read_csv(ENRON_FILE)
+enron = pd.read_csv(
+    ENRON_FILE
+)
 
-print(f"Enron rows: {len(enron)}")
+print(
+    f"Enron rows: {len(enron)}"
+)
 
 print("\nOriginal Enron labels:")
-print(enron["Spam/Ham"].value_counts())
+print(
+    enron["Spam/Ham"].value_counts()
+)
 
 
-# Keep required columns
-enron = enron[["Subject", "Message", "Spam/Ham"]].copy()
+# Select columns
+enron = enron[
+    [
+        "Subject",
+        "Message",
+        "Spam/Ham"
+    ]
+].copy()
 
 
-# Rename columns
+# Rename
 enron.rename(
     columns={
         "Subject": "subject",
@@ -49,135 +67,210 @@ enron.rename(
 )
 
 
-# Convert labels
+# Normalize labels
 enron["label"] = (
     enron["label"]
     .astype(str)
     .str.strip()
     .str.lower()
-    .map({
+)
+
+
+enron["label"] = enron["label"].map(
+    {
         "ham": "normal",
         "spam": "spam"
-    })
+    }
 )
 
 
 # ============================================================
-# 2. LOAD NAZARIO DATASET
+# LOAD NAZARIO
 # ============================================================
 
 print("\nLoading Nazario dataset...")
 
-nazario = pd.read_csv(NAZARIO_FILE)
+nazario = pd.read_csv(
+    NAZARIO_FILE
+)
 
-print(f"Nazario rows: {len(nazario)}")
+print(
+    f"Nazario rows: {len(nazario)}"
+)
 
 print("\nOriginal Nazario labels:")
-print(nazario["label"].value_counts())
+print(
+    nazario["label"].value_counts()
+)
 
 
-# Keep required columns
-nazario = nazario[["subject", "body"]].copy()
+nazario = nazario[
+    [
+        "subject",
+        "body"
+    ]
+].copy()
 
 
-# All emails in this dataset are used as phishing examples
+# Nazario is our phishing dataset
 nazario["label"] = "phishing"
 
 
 # ============================================================
-# 3. STANDARDIZE DATA TYPES
+# STANDARDIZE TEXT
 # ============================================================
 
 print("\nStandardizing text...")
 
+
 for df in [enron, nazario]:
 
-    df["subject"] = df["subject"].fillna("").astype(str)
-    df["body"] = df["body"].fillna("").astype(str)
+    df["subject"] = (
+        df["subject"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    df["body"] = (
+        df["body"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
 
 
 # ============================================================
-# 4. COMBINE DATASETS
+# COMBINE DATASETS
 # ============================================================
 
 print("\nCombining datasets...")
 
+
 combined = pd.concat(
     [
-        enron[["subject", "body", "label"]],
-        nazario[["subject", "body", "label"]]
+        enron[
+            [
+                "subject",
+                "body",
+                "label"
+            ]
+        ],
+
+        nazario[
+            [
+                "subject",
+                "body",
+                "label"
+            ]
+        ]
     ],
     ignore_index=True
 )
 
 
-print(f"Rows before cleaning: {len(combined)}")
+print(
+    f"Rows before cleaning: {len(combined)}"
+)
 
 
 # ============================================================
-# 5. REMOVE EMPTY EMAILS
+# REMOVE EMAILS WITH NO CONTENT
 # ============================================================
 
 combined["full_text"] = (
-    combined["subject"].str.strip()
+    combined["subject"]
     + " "
-    + combined["body"].str.strip()
-)
+    + combined["body"]
+).str.strip()
+
 
 combined = combined[
-    combined["full_text"].str.strip() != ""
+    combined["full_text"] != ""
 ].copy()
 
 
-print(f"Rows after removing empty emails: {len(combined)}")
+print(
+    "Rows after removing empty emails: "
+    f"{len(combined)}"
+)
 
 
 # ============================================================
-# 6. REMOVE DUPLICATES
+# REMOVE EXACT DUPLICATES
+#
+# IMPORTANT:
+# Include LABEL in the duplicate definition.
+#
+# This means:
+#
+# Same email + same label -> duplicate
+#
+# Same email + different label -> preserved
 # ============================================================
 
-before_duplicates = len(combined)
+before = len(combined)
+
 
 combined.drop_duplicates(
-    subset=["full_text"],
+    subset=[
+        "subject",
+        "body",
+        "label"
+    ],
+    keep="first",
     inplace=True
 )
 
-after_duplicates = len(combined)
+
+after = len(combined)
+
 
 print(
-    f"Duplicates removed: "
-    f"{before_duplicates - after_duplicates}"
+    "Duplicates removed: "
+    f"{before - after}"
 )
 
 
-# Remove temporary column
-combined.drop(columns=["full_text"], inplace=True)
+# ============================================================
+# REMOVE TEMPORARY COLUMN
+# ============================================================
+
+combined.drop(
+    columns=["full_text"],
+    inplace=True
+)
 
 
 # ============================================================
-# 7. REMOVE INVALID LABELS
+# REMOVE INVALID LABELS
 # ============================================================
 
 combined = combined[
     combined["label"].isin(
-        ["normal", "spam", "phishing"]
+        [
+            "normal",
+            "spam",
+            "phishing"
+        ]
     )
 ].copy()
 
 
 # ============================================================
-# 8. SHUFFLE DATASET
+# SHUFFLE
 # ============================================================
 
 combined = combined.sample(
     frac=1,
     random_state=42
-).reset_index(drop=True)
+).reset_index(
+    drop=True
+)
 
 
 # ============================================================
-# 9. DISPLAY CLASS DISTRIBUTION
+# CLASS DISTRIBUTION
 # ============================================================
 
 print("\n==========================================")
@@ -185,13 +278,12 @@ print("CLASS DISTRIBUTION")
 print("==========================================")
 
 print(
-    combined["label"]
-    .value_counts()
+    combined["label"].value_counts()
 )
 
 
 # ============================================================
-# 10. SAVE DATASET
+# SAVE
 # ============================================================
 
 combined.to_csv(
@@ -201,23 +293,33 @@ combined.to_csv(
 
 
 # ============================================================
-# 11. FINAL INFORMATION
+# FINAL INFORMATION
 # ============================================================
 
 print("\n==========================================")
 print("DATASET PREPARATION COMPLETE")
 print("==========================================")
 
-print(f"\nOutput file:")
-print(OUTPUT_FILE)
-
-print(f"\nTotal emails:")
-print(len(combined))
-
-print("\nColumns:")
-print(combined.columns.tolist())
-
-print("\nFirst 5 rows:")
 print(
-    combined.head().to_string(index=False)
+    "\nOutput file:"
+)
+
+print(
+    OUTPUT_FILE
+)
+
+print(
+    "\nTotal emails:"
+)
+
+print(
+    len(combined)
+)
+
+print(
+    "\nColumns:"
+)
+
+print(
+    combined.columns.tolist()
 )
